@@ -65,23 +65,21 @@ def home():
     
     print("Server received request for 'Home' page...")
     
-    return(f"<h>Hello. Welcome to Hawaii Climate Analysis page!</h><br/><br/>"
+    return(f"<h2>Hello! Welcome to Hawaii Climate Analysis page!</h2><br/>"
            f"/api/v1.0/precipitation<br/><br/>"
            f"/api/v1.0/stations<br/><br/>"
            f"/api/v1.0/tobs<br/><br/>"
            f"/api/v1.0/start<br/><br/>"
            f"/api/v1.0/start/end")
 
-  
+   
 '''-----------------------------------------------------------------
-Flask precipitation API
+year_ago_date
 ------------------------------------------------------------------'''
 
-@app.route("/api/v1.0/precipitation")
-def precipitation():
 
-    # Design a query to find the date of last data point
-
+def year_ago_date():
+    
     date_query = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
     
     # Calculate the date of last data point from the query
@@ -95,8 +93,38 @@ def precipitation():
     # Calculate the date 1 year ago from the last data point in the database
 
     Year_Ago_Date = latest_date - timedelta(days=365)
+    
+    return Year_Ago_Date
 
-    # Perform a query to retrieve the date and precipitation scores
+
+'''-----------------------------------------------------------------
+active_station_query
+------------------------------------------------------------------'''
+
+
+# Design a query to find the most active station
+
+def active_station_id():
+    
+    active_station_query = session.query(Measurement.station).\
+                           group_by(Measurement.station).\
+                           order_by(func.count().desc()).\
+                           first()
+
+    return active_station_query[0]
+
+
+
+'''-----------------------------------------------------------------
+Flask precipitation API
+------------------------------------------------------------------'''
+
+@app.route("/api/v1.0/precipitation")
+def precipitation():
+
+    Year_Ago_Date = year_ago_date()
+
+    # Perform a query to retrieve the date and precipitation scores for the past one year
 
     prcp_query = session.query(Measurement.date, Measurement.prcp).filter(Measurement.date >= Year_Ago_Date).all()
     
@@ -116,14 +144,18 @@ Flask stations API
 @app.route("/api/v1.0/stations")
 def stations():
     
+    # Perform a query to retrieve the station names
+
     station_query = session.query(Measurement.station, Station.name).\
                                   filter(Measurement.station == Station.station).\
                                   group_by(Measurement.station).all()
     
     # Convert the query results into a dictionary
+    
     stations_list = {ID : Name for ID, Name in station_query}
     
     # Return the results in Json
+    
     return jsonify(stations_list)
 
 
@@ -134,32 +166,9 @@ Flask tobs API
 @app.route("/api/v1.0/tobs")
 def tobs():
     
+    Year_Ago_Date = year_ago_date()
     
-    # Design a query to find the date of last data point
-
-    date_query = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
-
-    # Calculate the date of last data point from the query
-
-    latest_date_str = date_query[0]
-
-    # Using strptime() to create a datetime object from the time string
-
-    latest_date = datetime.strptime(latest_date_str,"%Y-%m-%d").date()
-
-    # Calculate the date 1 year ago from the last data point in the database
-
-    Year_Ago_Date = latest_date - timedelta(days=365)
-    
-    
-    # Design a query to find the stations and observation counts in descending order
-    
-    active_station_query = session.query(Measurement.station).\
-                           group_by(Measurement.station).\
-                           order_by(func.count().desc()).\
-                           first()
-
-    active_station_id = active_station_query[0]
+    active_station_id = active_station_id()
     
     # Query the last 12 months of TOBS for the most active station
     
@@ -175,25 +184,21 @@ def tobs():
     # Return the results in Json
     
     return jsonify(tobs)
-    
+        
 
 '''-----------------------------------------------------------------
 Flask stats API given start date
 ------------------------------------------------------------------'''
 
 @app.route("/api/v1.0/<start>")
-def stats(start):
+def start(start):
     
-    active_station_query = session.query(Measurement.station).\
-                           group_by(Measurement.station).\
-                           order_by(func.count().desc()).\
-                           first()
-
-    active_station_id = active_station_query[0]
-
-    
-    stats_query = session.query(func.min(Measurement.tobs),func.max(Measurement.tobs),func.avg(Measurement.tobs)).\
-                  filter(Measurement.date >= start).group_by(Measurement.station).all()
+    stats_query = session.query(Measurement.station,
+                                func.min(Measurement.tobs),
+                                func.max(Measurement.tobs),
+                                func.avg(Measurement.tobs)).\
+                  filter(Measurement.date >= start).\
+                  group_by(Measurement.station).all()
 
     return jsonify(stats_query)
 
@@ -205,26 +210,17 @@ Flask stats API given start date and end date
 @app.route("/api/v1.0/<start>/<end>")
 def startend(start, end):
     
-    active_station_query = session.query(Measurement.station).\
-                           group_by(Measurement.station).\
-                           order_by(func.count().desc()).\
-                           first()
-
-    active_station_id = active_station_query[0]
-
-    
-    stats_query = session.query(func.min(Measurement.tobs),func.max(Measurement.tobs),func.avg(Measurement.tobs)).\
-                  filter(Measurement.date >= start).filter(Measurement.date <= end).\
+    stats_query = session.query(Measurement.station,
+                                func.min(Measurement.tobs),
+                                func.max(Measurement.tobs),
+                                func.avg(Measurement.tobs)).\
+                  filter(Measurement.date >= start).\
+                  filter(Measurement.date <= end).\
                   group_by(Measurement.station).all()
     
-    return  jsonify(stats_query)
+    return jsonify(stats_query)
 
-    '''
-    return (f'The Min, Max & Avg temoeratures for station {active_station_query[0]}: <br/><br/>'
-            f'{jsonify(stats_query)}'
-           )
-    '''
-       
+
 '''^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^'''
 
 if __name__ == "__main__":
